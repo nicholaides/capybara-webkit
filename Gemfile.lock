@@ -53,4 +53,3 @@ DEPENDENCIES
   rake
   rspec
   sinatra
-  tilt (= 1.2.2)
