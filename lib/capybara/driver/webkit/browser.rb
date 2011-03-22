@@ -30,6 +30,11 @@ class Capybara::Driver::Webkit
       command("Url")
     end
 
+    def render(path)
+      json = command "Render", path
+      JSON.parse("[#{json}]").first
+    end
+
     def command(name, *args)
       @socket.puts name
       @socket.puts args.size

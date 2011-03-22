@@ -5,7 +5,7 @@
 
 WebPage::WebPage(QObject *parent) : QWebPage(parent) {
   connect(mainFrame(), SIGNAL(javaScriptWindowObjectCleared()),
-          this,        SLOT(injectJavascriptHelpers()));
+      this,        SLOT(injectJavascriptHelpers()));
   QResource javascript(":/capybara.js");
   char * javascriptString =  new char[javascript.size() + 1];
   strcpy(javascriptString, (const char *)javascript.data());
@@ -56,10 +56,10 @@ bool WebPage::javaScriptConfirm(QWebFrame *frame, const QString &message) {
 
 bool WebPage::javaScriptPrompt(QWebFrame *frame, const QString &message, const QString &defaultValue, QString *result) {
   Q_UNUSED(frame)
-  Q_UNUSED(message)
-  Q_UNUSED(defaultValue)
-  Q_UNUSED(result)
-  return false;
+    Q_UNUSED(message)
+    Q_UNUSED(defaultValue)
+    Q_UNUSED(result)
+    return false;
 }
 
 void WebPage::loadStarted() {
@@ -77,5 +77,33 @@ bool WebPage::isLoading() const {
 
 QString WebPage::failureString() {
   return QString("Unable to load URL: ") + mainFrame()->url().toString();
+}
+
+/*
+ * Swiped from Phantom.js
+ * Check out their code for rendering to PDFs and GIFs
+ */
+bool WebPage::render(const QString &fileName) {
+  QFileInfo fileInfo(fileName);
+  QDir dir;
+  dir.mkpath(fileInfo.absolutePath());
+
+  QSize viewportSize = this->viewportSize();
+  QSize pageSize = this->mainFrame()->contentsSize();
+  if (pageSize.isEmpty())
+    return false;
+
+  QImage buffer(pageSize, QImage::Format_ARGB32);
+  buffer.fill(qRgba(255, 255, 255, 0));
+  QPainter p(&buffer);
+  p.setRenderHint(QPainter::Antialiasing, true);
+  p.setRenderHint(QPainter::TextAntialiasing, true);
+  p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+  this->setViewportSize(pageSize);
+  this->mainFrame()->render(&p);
+  p.end();
+  this->setViewportSize(viewportSize);
+
+  return buffer.save(fileName);
 }
 

@@ -8,6 +8,7 @@ class WebPage : public QWebPage {
     QVariant invokeCapybaraFunction(const char *name, QStringList &arguments);
     QVariant invokeCapybaraFunction(QString &name, QStringList &arguments);
     QString failureString();
+    bool render(const QString &fileName);
 
   public slots:
     bool shouldInterruptJavaScript();
