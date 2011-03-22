@@ -82,6 +82,8 @@ QString WebPage::failureString() {
 /*
  * Swiped from Phantom.js
  * Check out their code for rendering to PDFs and GIFs
+ *
+ * returns true if it was able to save the file
  */
 bool WebPage::render(const QString &fileName) {
   QFileInfo fileInfo(fileName);
