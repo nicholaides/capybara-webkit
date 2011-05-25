@@ -16,6 +16,7 @@ class WebPage : public QWebPage {
     void loadStarted();
     void loadFinished(bool);
     bool isLoading() const;
+    void frameCreated(QWebFrame *);
 
   protected:
     virtual void javaScriptConsoleMessage(const QString &message, int lineNumber, const QString &sourceID);

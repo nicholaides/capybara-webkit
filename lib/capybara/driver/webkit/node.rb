@@ -6,7 +6,7 @@ class Capybara::Driver::Webkit
 
     def [](name)
       value = invoke("attribute", name)
-      if name == 'checked'
+      if name == 'checked' || name == 'disabled'
         value == 'true'
       else
         value
@@ -42,9 +42,7 @@ class Capybara::Driver::Webkit
     end
 
     def drag_to(element)
-      trigger('mousedown')
-      element.trigger('mousemove')
-      element.trigger('mouseup')
+      invoke 'dragTo', element.native
     end
 
     def tag_name
@@ -55,8 +53,12 @@ class Capybara::Driver::Webkit
       invoke("visible") == "true"
     end
 
+    def disabled?
+      self['disabled']
+    end
+    
     def path
-      raise NotSupportedByDriverError
+      raise Capybara::NotSupportedByDriverError
     end
 
     def trigger(event)
@@ -84,4 +86,3 @@ class Capybara::Driver::Webkit
     end
   end
 end
-

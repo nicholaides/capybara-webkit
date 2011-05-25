@@ -6,6 +6,104 @@ describe Capybara::Driver::Webkit do
   before { subject.visit("/hello/world?success=true") }
   after { subject.reset! }
 
+  context "iframe app" do
+    before(:all) do
+      @app = lambda do |env|
+        params = ::Rack::Utils.parse_query(env['QUERY_STRING'])
+        if params["iframe"] == "true"
+          # We are in an iframe request.
+          p_id = "farewell"
+          msg  = "goodbye"
+          iframe = nil
+        else
+          # We are not in an iframe request and need to make an iframe!
+          p_id = "greeting"
+          msg  = "hello"
+          iframe = "<iframe id=\"f\" src=\"/?iframe=true\"></iframe>"
+        end
+        body = <<-HTML
+          <html>
+            <head>
+              <style type="text/css">
+                #display_none { display: none }
+              </style>
+            </head>
+            <body>
+              #{iframe}
+              <script type="text/javascript">
+                document.write("<p id='#{p_id}'>#{msg}</p>");
+              </script>
+            </body>
+          </html>
+        HTML
+        [200,
+          { 'Content-Type' => 'text/html', 'Content-Length' => body.length.to_s },
+          [body]]
+      end
+    end
+
+    it "finds frames by index" do
+      subject.within_frame(0) do
+        subject.find("//*[contains(., 'goodbye')]").should_not be_empty
+      end
+    end
+
+    it "finds frames by id" do
+      subject.within_frame("f") do
+        subject.find("//*[contains(., 'goodbye')]").should_not be_empty
+      end
+    end
+
+    it "raises error for missing frame by index" do
+      expect { subject.within_frame(1) { } }.
+        to raise_error(Capybara::Driver::Webkit::WebkitError)
+    end
+
+    it "raise_error for missing frame by id" do
+      expect { subject.within_frame("foo") { } }.
+        to raise_error(Capybara::Driver::Webkit::WebkitError)
+    end
+
+    it "returns an attribute's value" do
+      subject.within_frame("f") do
+        subject.find("//p").first["id"].should == "farewell"
+      end
+    end
+
+    it "returns a node's text" do
+      subject.within_frame("f") do
+        subject.find("//p").first.text.should == "goodbye"
+      end
+    end
+
+    it "returns the current URL" do
+      subject.within_frame("f") do
+        port = subject.instance_variable_get("@rack_server").port
+        subject.current_url.should == "http://127.0.0.1:#{port}/?iframe=true"
+      end
+    end
+
+    it "returns the source code for the page" do
+      subject.within_frame("f") do
+        subject.source.should =~ %r{<html>.*farewell.*}m
+      end
+    end
+
+    it "evaluates Javascript" do
+      subject.within_frame("f") do
+        result = subject.evaluate_script(%<document.getElementById('farewell').innerText>)
+        result.should == "goodbye"
+      end
+    end
+
+    it "executes Javascript" do
+      subject.within_frame("f") do
+        subject.execute_script(%<document.getElementById('farewell').innerHTML = 'yo'>)
+        subject.find("//p[contains(., 'yo')]").should_not be_empty
+      end
+    end
+  end
+
   context "hello app" do
     before(:all) do
       @app = lambda do |env|
@@ -20,6 +118,7 @@ describe Capybara::Driver::Webkit do
               <div id="display_none">
                 <div id="invisible">Can't see me</div>
               </div>
+              <input type="text" disabled="disabled"/>
               <script type="text/javascript">
                 document.write("<p id='greeting'>he" + "llo</p>");
               </script>
@@ -61,6 +160,11 @@ describe Capybara::Driver::Webkit do
     it "returns the current URL" do
       port = subject.instance_variable_get("@rack_server").port
       subject.current_url.should == "http://127.0.0.1:#{port}/hello/world?success=true"
+    end
+
+    it "escapes URLs" do
+      subject.visit("/hello there")
+      subject.current_url.should =~ /hello%20there/
     end
 
     it "returns the source code for the page" do
@@ -131,8 +235,17 @@ describe Capybara::Driver::Webkit do
         to raise_error(Capybara::Driver::Webkit::WebkitError)
     end
 
+    it "doesn't raise an error for Javascript that doesn't return anything" do
+      lambda { subject.execute_script(%<(function () { "returns nothing" })()>) }.
+        should_not raise_error
+    end
+
     it "returns a node's tag name" do
       subject.find("//p").first.tag_name.should == "p"
+    end
+
+    it "reads disabled property" do
+      subject.find("//input").first.should be_disabled
     end
 
     it "finds visible elements" do
@@ -148,6 +261,7 @@ describe Capybara::Driver::Webkit do
           <html><body>
             <form action="/" method="GET">
               <input type="text" name="foo" value="bar"/>
+              <input type="text" id="disabled_input" disabled="disabled"/>
               <input type="checkbox" name="checkedbox" value="1" checked="checked"/>
               <input type="checkbox" name="uncheckedbox" value="2"/>
               <select name="animal">
@@ -269,6 +383,17 @@ describe Capybara::Driver::Webkit do
       unchecked_box.set(false)
       unchecked_box['checked'].should_not be_true
     end
+
+    let(:enabled_input)  { subject.find("//input[@name='foo']").first }
+    let(:disabled_input) { subject.find("//input[@id='disabled_input']").first }
+
+    it "knows a disabled input is disabled" do
+      disabled_input['disabled'].should be_true
+    end
+
+    it "knows a not disabled input is not disabled" do
+      enabled_input['disabled'].should_not be_true
+    end
   end
 
   context "form events app" do
@@ -297,6 +422,7 @@ describe Capybara::Driver::Webkit do
                 var element = elements[i];
                 element.addEventListener("focus", recordEvent);
                 element.addEventListener("keydown", recordEvent);
+                element.addEventListener("keypress", recordEvent);
                 element.addEventListener("keyup", recordEvent);
                 element.addEventListener("change", recordEvent);
                 element.addEventListener("blur", recordEvent);
@@ -311,19 +437,27 @@ describe Capybara::Driver::Webkit do
       end
     end
 
+    let(:newtext) { 'newvalue' }
+
+    let(:keyevents) do
+      (%w{focus} +
+       newtext.length.times.collect { %w{keydown keypress keyup} } +
+       %w{change blur}).flatten
+    end
+
     it "triggers text input events" do
-      subject.find("//input[@type='text']").first.set("newvalue")
-      subject.find("//li").map(&:text).should == %w(focus keydown keyup change blur)
+      subject.find("//input[@type='text']").first.set(newtext)
+      subject.find("//li").map(&:text).should == keyevents
     end
 
     it "triggers textarea input events" do
-      subject.find("//textarea").first.set("newvalue")
-      subject.find("//li").map(&:text).should == %w(focus keydown keyup change blur)
+      subject.find("//textarea").first.set(newtext)
+      subject.find("//li").map(&:text).should == keyevents
     end
 
     it "triggers password input events" do
-      subject.find("//input[@type='password']").first.set("newvalue")
-      subject.find("//li").map(&:text).should == %w(focus keydown keyup change blur)
+      subject.find("//input[@type='password']").first.set(newtext)
+      subject.find("//li").map(&:text).should == keyevents
     end
 
     it "triggers radio input events" do
@@ -345,7 +479,17 @@ describe Capybara::Driver::Webkit do
             <div id="change">Change me</div>
             <div id="mouseup">Push me</div>
             <div id="mousedown">Release me</div>
+            <form action="/" method="GET">
+              <select id="change_select" name="change_select">
+                <option value="1" id="option-1" selected="selected">one</option>
+                <option value="2" id="option-2">two</option>
+              </select>
+            </form>
             <script type="text/javascript">
+              document.getElementById("change_select").
+                addEventListener("change", function () {
+                  this.className = "triggered";
+                });
               document.getElementById("change").
                 addEventListener("change", function () {
                   this.className = "triggered";
@@ -383,13 +527,22 @@ describe Capybara::Driver::Webkit do
       subject.find("//*[@class='triggered']").should_not be_empty
     end
 
+    it "fires a change on select" do
+      select = subject.find("//select").first
+      select.value.should == "1"
+      option = subject.find("//option[@id='option-2']").first
+      option.select_option
+      select.value.should == "2"
+      subject.find("//select[@class='triggered']").should_not be_empty
+    end
+
     it "fires drag events" do
       draggable = subject.find("//*[@id='mousedown']").first
       container = subject.find("//*[@id='mouseup']").first
 
       draggable.drag_to(container)
 
-      subject.find("//*[@class='triggered']").size.should == 2
+      subject.find("//*[@class='triggered']").size.should == 1
     end
   end
 
@@ -435,6 +588,67 @@ describe Capybara::Driver::Webkit do
     it "waits for a request to load" do
       subject.find("//input").first.click
       subject.find("//p").first.text.should == "/next"
+    end
+  end
+
+  context "error app" do
+    before(:all) do
+      @app = lambda do |env|
+        if env['PATH_INFO'] == "/error"
+          [404, {}, []]
+        else
+          body = <<-HTML
+            <html><body>
+              <form action="/error"><input type="submit"/></form>
+            </body></html>
+          HTML
+          [200,
+            { 'Content-Type' => 'text/html', 'Content-Length' => body.length.to_s },
+            [body]]
+        end
+      end
+    end
+
+    it "raises a webkit error for the requested url" do
+      expect {
+        subject.find("//input").first.click
+        wait_for_error_to_complete
+        subject.find("//body")
+      }.
+        to raise_error(Capybara::Driver::Webkit::WebkitError, %r{/error})
+    end
+
+    def wait_for_error_to_complete
+      sleep(0.5)
+    end
+  end
+
+  context "slow error app" do
+    before(:all) do
+      @app = lambda do |env|
+        if env['PATH_INFO'] == "/error"
+          body = "error"
+          sleep(1)
+          [304, {}, []]
+        else
+          body = <<-HTML
+            <html><body>
+              <form action="/error"><input type="submit"/></form>
+              <p>hello</p>
+            </body></html>
+          HTML
+          [200,
+            { 'Content-Type' => 'text/html', 'Content-Length' => body.length.to_s },
+            [body]]
+        end
+      end
+    end
+
+    it "raises a webkit error and then continues" do
+      subject.find("//input").first.click
+      expect { subject.find("//p") }.to raise_error(Capybara::Driver::Webkit::WebkitError)
+      subject.visit("/")
+      subject.find("//p").first.text.should == "hello"
     end
   end
 

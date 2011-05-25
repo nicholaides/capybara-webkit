@@ -7,14 +7,14 @@ Visit::Visit(WebPage *page, QObject *parent) : Command(page, parent) {
 }
 
 void Visit::start(QStringList &arguments) {
-  page()->mainFrame()->setUrl(QUrl(arguments[0]));
+  page()->currentFrame()->setUrl(QUrl(arguments[0]));
 }
 
 void Visit::loadFinished(bool success) {
-  QString response;
+  QString message;
   if (!success)
-    response = page()->failureString();
+    message = page()->failureString();
 
-  emit finished(success, response);
+  emit finished(new Response(success, message));
 }
 

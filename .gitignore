@@ -12,3 +12,4 @@ moc_*.cpp
 .bundle
 pkg
 .rvmrc
+src/webkit_server
