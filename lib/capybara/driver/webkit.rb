@@ -44,6 +44,13 @@ class Capybara::Driver::Webkit
     browser.evaluate_script script
   end
 
+  def render(path, options={})
+    options[:width]  ||= 1000
+    options[:height] ||= 10
+
+    browser.render path, options[:width], options[:height]
+  end
+
   def response_headers
     raise Capybara::NotSupportedByDriverError
   end

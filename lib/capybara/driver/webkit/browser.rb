@@ -30,9 +30,8 @@ class Capybara::Driver::Webkit
       command("Url")
     end
 
-    def render(path)
-      json = command "Render", path
-      JSON.parse("[#{json}]").first
+    def render(path, width, height)
+      command "Render", path, width, height
     end
 
     def frame_focus(frame_id_or_index=nil)

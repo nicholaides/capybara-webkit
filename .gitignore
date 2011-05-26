@@ -13,3 +13,5 @@ moc_*.cpp
 pkg
 .rvmrc
 src/webkit_server
+.DS_Store
+tmp
